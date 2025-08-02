@@ -1,66 +1,106 @@
 "use client";
 
-import Link from "next/link";
 import type { NextPage } from "next";
-import { useAccount } from "wagmi";
-import { BugAntIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import { Address } from "~~/components/scaffold-eth";
+import Link from "next/link";
+import { useScaffoldContractRead } from "~~/hooks/scaffold-eth/useScaffoldContractRead";
+import { useReadContracts } from "wagmi";
+import { useEffect, useState } from "react";
+import { getContract } from "viem";
+import { useTargetNetwork } from "~~/hooks/scaffold-eth/useTargetNetwork";
+import { usePublicClient } from "wagmi";
+import { getContractAbi } from "~~/utils/scaffold-eth/contract";
+
+// Definición local de la interfaz Project basada en el contrato Solidity
+interface Project {
+  title: string;
+  description: string;
+  paymentAmount: bigint;
+  employer: string;
+  worker: string;
+  deadline: bigint;
+  completed: boolean;
+  paid: boolean;
+}
 
 const Home: NextPage = () => {
-  const { address: connectedAddress } = useAccount();
+  const { data: projectIdCounter, isLoading: isLoadingCounter } = useScaffoldContractRead({
+    contractName: "YourContract",
+    functionName: "projectIdCounter",
+  });
+
+  const { targetNetwork } = useTargetNetwork();
+  const publicClient = usePublicClient({ chainId: targetNetwork.id });
+  const contractAbi = getContractAbi("YourContract");
+
+  const projectCalls = Array.from({ length: Number(projectIdCounter || 0) }, (_, i) => ({
+    address: targetNetwork.contracts.YourContract.address,
+    abi: contractAbi,
+    functionName: "projects",
+    args: [BigInt(i + 1)],
+  }));
+
+  const { data: fetchedProjectsData, isLoading: isLoadingProjectsData } = useReadContracts({
+    contracts: projectCalls,
+  });
+
+  const [projects, setProjects] = useState<Project[]>([]);
+
+  useEffect(() => {
+    if (fetchedProjectsData) {
+      const parsedProjects: Project[] = fetchedProjectsData.map((projectData: any) => {
+        if (projectData.result) {
+          return {
+            title: projectData.result[0],
+            description: projectData.result[1],
+            paymentAmount: projectData.result[2],
+            employer: projectData.result[3],
+            worker: projectData.result[4],
+            deadline: projectData.result[5],
+            completed: projectData.result[6],
+            paid: projectData.result[7],
+          };
+        }
+        return null; // O manejar el error de alguna manera
+      }).filter(Boolean) as Project[]; // Filtrar cualquier proyecto nulo
+      setProjects(parsedProjects);
+    }
+  }, [fetchedProjectsData]);
 
   return (
     <>
       <div className="flex items-center flex-col grow pt-10">
         <div className="px-5">
           <h1 className="text-center">
-            <span className="block text-2xl mb-2">Welcome to</span>
-            <span className="block text-4xl font-bold">Scaffold-ETH 2</span>
+            <span className="block text-4xl font-bold">Proyectos WorkProof</span>
           </h1>
           <div className="flex justify-center items-center space-x-2 flex-col">
-            <p className="my-2 font-medium">Connected Address:</p>
-            <Address address={connectedAddress} />
-          </div>
-          <p className="text-center text-lg">
-            Get started by editing{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              packages/nextjs/app/page.tsx
-            </code>
-          </p>
-          <p className="text-center text-lg">
-            Edit your smart contract{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              YourContract.sol
-            </code>{" "}
-            in{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              packages/hardhat/contracts
-            </code>
-          </p>
-        </div>
-
-        <div className="grow bg-base-300 w-full mt-16 px-8 py-12">
-          <div className="flex justify-center items-center gap-12 flex-col md:flex-row">
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <BugAntIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Tinker with your smart contract using the{" "}
-                <Link href="/debug" passHref className="link">
-                  Debug Contracts
-                </Link>{" "}
-                tab.
-              </p>
-            </div>
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <MagnifyingGlassIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Explore your local transactions with the{" "}
-                <Link href="/blockexplorer" passHref className="link">
-                  Block Explorer
-                </Link>{" "}
-                tab.
-              </p>
-            </div>
+            {isLoadingCounter || isLoadingProjectsData ? (
+              <p>Cargando proyectos...</p>
+            ) : (
+              <div>
+                <p>Total de proyectos: {projectIdCounter ? projectIdCounter.toString() : "0"}</p>
+                {projects.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-8">
+                    {projects.map((project, index) => (
+                      <Link href={`/project/${index + 1}`} key={index} passHref>
+                        <div className="card bg-base-100 shadow-xl p-4 cursor-pointer hover:shadow-2xl transition-shadow duration-200">
+                          <h2 className="card-title">{project.title}</h2>
+                          <p>{project.description}</p>
+                          <p>Monto: {project.paymentAmount.toString()}</p>
+                          <p>Empleador: {project.employer}</p>
+                          <p>Trabajador: {project.worker}</p>
+                          <p>Fecha Límite: {new Date(Number(project.deadline) * 1000).toLocaleDateString()}</p>
+                          <p>Completado: {project.completed ? "Sí" : "No"}</p>
+                          <p>Pagado: {project.paid ? "Sí" : "No"}</p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <p>No hay proyectos disponibles.</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

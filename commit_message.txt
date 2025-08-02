@@ -1,0 +1,1 @@
+feat: Initial setup, branding, WorkSeal & Project structs, createProject function, and Spanish comments.

@@ -22,19 +22,31 @@ const deployYourContract: DeployFunction = async function (hre: HardhatRuntimeEn
   const { deployer } = await hre.getNamedAccounts();
   const { deploy } = hre.deployments;
 
-  await deploy("YourContract", {
+  // Deploy MockUSDC first
+  await deploy("MockUSDC", {
     from: deployer,
-    // Contract constructor arguments
-    args: [deployer],
+    args: [1000000000000000000000000n], // 1,000,000 USDC (with 18 decimals)
     log: true,
-    // autoMine: can be passed to the deploy function to make the deployment process faster on local networks by
-    // automatically mining the contract deployment transaction. There is no effect on live networks.
     autoMine: true,
   });
 
-  // Get the deployed contract to interact with it after deploying.
+  // Get the deployed MockUSDC contract
+  const mockUSDC = await hre.ethers.getContract<Contract>("MockUSDC", deployer);
+  console.log("MockUSDC deployed to:", mockUSDC.address);
+
+  await deploy("YourContract", {
+    from: deployer,
+    // Contract constructor arguments
+    args: [deployer, mockUSDC.address],
+    log: true,
+    // autoMine: can be passed to the deploy function to make the deployment process faster on local networks by
+    // automatically mining the contract deployment transaction.
+    autoMine: true,
+  });
+
+  // Get the deployed YourContract to interact with it after deploying.
   const yourContract = await hre.ethers.getContract<Contract>("YourContract", deployer);
-  console.log("👋 Initial greeting:", await yourContract.greeting());
+  
 };
 
 export default deployYourContract;
